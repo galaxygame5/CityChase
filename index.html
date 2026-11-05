@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シティチェイス Online</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        polarDark: '#0b1329',
+                        polarGlass: 'rgba(15, 23, 42, 0.85)',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- PeerJS for P2P Online -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
+        
+        body {
+            font-family: 'Zen Maru Gothic', 'Plus Jakarta Sans', sans-serif;
+            background: linear-gradient(135deg, #0b1329 0%, #1e1b4b 50%, #111827 100%);
+            color: #f0f9ff;
+            user-select: none;
+            touch-action: manipulation;
+            min-height: 100vh;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+
+        @keyframes fadeInScale {
+            0% { opacity: 0; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .animate-pop {
+            animation: fadeInScale 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .my-turn-active-panel {
+            border-color: rgba(6, 182, 212, 0.7) !important;
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.25) !important;
+            background: rgba(15, 23, 42, 0.95) !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-100 flex flex-col justify-between overflow-x-hidden">
+
+    <!-- Header / Navbar -->
+    <header class="w-full p-4 md:p-5 glass-panel sticky top-0 z-40 border-b border-blue-500/20 flex justify-between items-center">
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="location.reload()">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/30 border border-blue-200/30">
+                <span class="text-2xl">🚔</span>
+            </div>
+            <div>
+                <h1 class="font-black text-xl md:text-2xl tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-blue-300 via-indigo-200 to-cyan-300">
+                    シティチェイス Online
+                </h1>
+                <p class="text-[10px] md:text-xs text-blue-300/70 font-mono tracking-widest uppercase">CITY CHASE - BOARD GAME ONLINE</p>
+            </div>
+        </div>
+
+        <div id="headerInfo" class="hidden flex items-center space-x-3">
+            <div id="roomBadge" class="bg-slate-900/90 border border-blue-500/30 px-3.5 py-1.5 rounded-full text-xs md:text-sm font-mono font-bold text-blue-300 flex items-center gap-2 cursor-pointer hover:bg-slate-800 transition" onclick="copyRoomCode()">
+                <i class="fa-regular fa-copy"></i>
+                <span id="displayRoomCode">----</span>
+            </div>
+            <button id="soundToggleBtn" onclick="toggleSound()" class="w-10 h-10 rounded-full bg-slate-800/80 hover:bg-slate-700 border border-blue-500/30 flex items-center justify-center text-blue-300 text-base transition">
+                <i class="fa-solid fa-volume-high" id="soundIcon"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6 max-w-5xl flex-grow flex flex-col justify-center">
+
+        <!-- VIEW 1: LOBBY -->
+        <div id="viewLobby" class="space-y-6 max-w-2xl mx-auto w-full">
+            <div class="text-center space-y-3 my-2">
+                <div class="inline-block px-4 py-1.5 bg-blue-500/20 text-blue-300 rounded-full text-xs md:text-sm font-bold border border-blue-400/30 shadow-lg backdrop-blur-md">
+                    1対多の潜伏チェイスゲーム 🚁 🏎️
+                </div>
+                <h2 class="text-3xl md:text-5xl font-black text-white tracking-tight">犯人を追い詰め逮捕せよ！</h2>
+                <p class="text-blue-200/80 text-xs md:text-sm max-w-lg mx-auto leading-relaxed">
+                    犯人は警察の目をかいくぐり11ラウンド逃げ切れ！<br>警察チームは3機のヘリで街を捜索し犯人を突き止めろ！
+                </p>
+            </div>
+
+            <div class="glass-panel rounded-3xl p-6 shadow-2xl space-y-3">
+                <label class="block text-xs font-bold uppercase tracking-wider text-blue-200">プレイヤー名（ニックネーム）</label>
+                <input type="text" id="playerNameInput" maxlength="10" placeholder="名前を入力してください" 
+                    class="w-full bg-slate-950/80 border border-blue-500/40 rounded-2xl px-5 py-3.5 text-white focus:outline-none focus:border-cyan-400 transition font-bold text-lg placeholder-slate-600">
+            </div>
+
+            <div class="glass-panel rounded-3xl p-6 shadow-2xl space-y-3">
+                <label class="block text-xs font-bold uppercase tracking-wider text-blue-200">部屋の合言葉（部屋コード）</label>
+                <input type="text" id="joinRoomCodeInput" placeholder="例: citychase1" 
+                    class="w-full bg-slate-950/80 border border-blue-500/40 rounded-2xl px-5 py-3.5 text-white font-mono tracking-widest text-lg focus:outline-none focus:border-cyan-400 transition placeholder-slate-600">
+                <p class="text-xs text-blue-300/60">※全員で同じ合言葉を入力してください (2人〜4人推奨)</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="glass-panel rounded-3xl p-6 shadow-2xl hover:border-cyan-400/60 transition flex flex-col justify-between space-y-4">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-300 flex items-center justify-center text-2xl mb-2 border border-blue-400/30">
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-white">部屋を作る (ホスト)</h3>
+                    </div>
+                    <button id="btnCreateRoom" class="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-lg py-3.5 rounded-2xl shadow-lg shadow-blue-500/20 transition transform active:scale-95">
+                        部屋を作成
+                    </button>
+                </div>
+
+                <div class="glass-panel rounded-3xl p-6 shadow-2xl hover:border-indigo-400/60 transition flex flex-col justify-between space-y-4">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-2xl mb-2 border border-indigo-400/30">
+                            <i class="fa-solid fa-right-to-bracket"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-white">部屋に入る (ゲスト)</h3>
+                    </div>
+                    <button id="btnJoinRoom" class="w-full bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-black text-lg py-3.5 rounded-2xl shadow-lg shadow-indigo-500/20 transition transform active:scale-95">
+                        部屋に参加
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 2: ROOM LOBBY -->
+        <div id="viewRoomLobby" class="hidden space-y-5 max-w-2xl mx-auto w-full">
+            <div class="glass-panel rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
+                <div class="flex justify-between items-center border-b border-blue-500/20 pb-4">
+                    <div>
+                        <span class="text-xs font-bold text-blue-400 tracking-wider uppercase">LOBBY ROOM</span>
+                        <h2 class="text-2xl md:text-3xl font-black text-white flex items-center gap-2">
+                            合言葉: <span id="lobbyRoomCode" class="font-mono text-cyan-300">----</span>
+                        </h2>
+                    </div>
+                    <button onclick="copyRoomCode()" class="bg-slate-800/80 hover:bg-slate-700 text-blue-300 text-xs md:text-sm font-bold px-4 py-2 rounded-2xl border border-blue-500/30 flex items-center gap-2 transition">
+                        <i class="fa-regular fa-copy"></i> コピー
+                    </button>
+                </div>
+
+                <!-- Host Settings (Criminal Selection) -->
+                <div id="hostLobbySettings" class="hidden bg-slate-950/80 rounded-2xl p-4 border border-blue-500/30 space-y-3">
+                    <label class="block text-xs font-bold text-cyan-300 uppercase tracking-wider">【犯人役の設定 (ホスト専用)】</label>
+                    <div>
+                        <select id="criminalSelectSetting" onchange="updateCriminalSetting()" class="w-full bg-slate-900 border border-blue-500/40 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-cyan-400">
+                            <option value="RANDOM">🎲 完全ランダムで選出</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Player Color Selection Box -->
+                <div class="bg-slate-950/80 rounded-2xl p-4 border border-blue-500/30 space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="block text-xs font-bold text-blue-200 uppercase tracking-wider">マイカラー選択 (4人時は自分のヘリの色)</label>
+                        <span class="text-[11px] text-blue-300/70">※他プレイヤーと重複不可</span>
+                    </div>
+                    <div id="lobbyColorPalette" class="flex flex-wrap gap-2.5 pt-1"></div>
+                </div>
+
+                <!-- Player List -->
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center text-xs font-bold text-blue-200">
+                        <span>参加プレイヤー (<span id="playerCount">0</span>名)</span>
+                        <span class="text-blue-400/70">※2名〜4名でプレイ可能</span>
+                    </div>
+                    <div id="playerList" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1"></div>
+                </div>
+
+                <div class="pt-2">
+                    <button id="startGameBtn" onclick="startGame()" class="hidden w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-lg py-4 rounded-2xl shadow-xl shadow-blue-500/30 transition transform active:scale-95">
+                        ゲームを開始する 🚀
+                    </button>
+                    <p id="waitingForHostMsg" class="text-center text-blue-300/70 text-xs font-medium animate-pulse">
+                        ホストが対戦を開始するのを待っています...
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 3: GAME PLAYING -->
+        <div id="viewGame" class="hidden space-y-5 w-full max-w-4xl mx-auto">
+            <!-- Game Status Header -->
+            <div id="gameStatusHeaderPanel" class="glass-panel p-4 rounded-3xl border border-blue-500/20 space-y-4 transition-all duration-300">
+                <div class="flex flex-wrap justify-between items-center gap-3">
+                    <div class="flex items-center space-x-3">
+                        <div>
+                            <span class="text-[10px] text-blue-300/70 block uppercase font-bold">あなたの役割</span>
+                            <span id="myRoleBadge" class="font-black text-base md:text-lg text-white">----</span>
+                        </div>
+                    </div>
+
+                    <!-- Role Status Badges -->
+                    <div class="flex items-center gap-2 text-xs font-bold">
+                        <span id="turnStatusText" class="bg-cyan-500/20 text-cyan-300 px-3 py-1.5 rounded-xl border border-cyan-400/30">
+                            ---
+                        </span>
+                    </div>
+                </div>
+
+                <!-- SUGOROKU ROUND TRACKER -->
+                <div class="bg-slate-950/80 p-3 rounded-2xl border border-blue-500/30 space-y-1.5">
+                    <div class="flex justify-between items-center text-[11px] font-bold text-blue-300 px-1">
+                        <span>すごろく風 ラウンドトラッカー（痕跡カラー一覧）</span>
+                        <span id="trackerCurrentRoundText" class="text-cyan-300">R1 / 11</span>
+                    </div>
+                    <div id="sugorokuTracker" class="grid grid-cols-11 gap-1"></div>
+                </div>
+            </div>
+
+            <!-- BOARD SECTION -->
+            <div class="glass-panel p-4 md:p-6 rounded-3xl border border-blue-500/30 space-y-4">
+                <!-- Instruction Header -->
+                <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-blue-500/20 text-center">
+                    <p id="actionGuideText" class="text-xs md:text-sm font-bold text-cyan-200">
+                        ---
+                    </p>
+                </div>
+
+                <!-- Interactive Grid Map -->
+                <div class="flex justify-center items-center w-full my-2">
+                    <div class="relative w-full max-w-lg aspect-square bg-slate-950 border-2 border-blue-500/40 rounded-3xl p-5 md:p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
+                        <div id="cityMapGrid" class="w-full h-full relative">
+                            <!-- Dynamic Grid Elements render here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Controls -->
+                <div id="gameActionControls" class="space-y-2 max-w-md mx-auto text-center">
+                    <!-- Dynamic Buttons -->
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 4: GAME OVER -->
+        <div id="viewGameOver" class="hidden glass-panel rounded-3xl p-8 md:p-10 shadow-2xl text-center space-y-6 max-w-xl mx-auto w-full border border-blue-500/30">
+            <div class="py-2 space-y-2">
+                <div id="winnerIcon" class="text-6xl mx-auto mb-2">🏆</div>
+                <h2 id="winnerTitle" class="text-3xl md:text-4xl font-black text-cyan-300">ゲーム終了</h2>
+                <p id="winnerSubtitle" class="text-sm text-blue-200/80">----</p>
+            </div>
+
+            <div id="gameOverHostControls" class="hidden space-y-2 pt-2">
+                <button onclick="returnToLobby()" class="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-lg py-4 rounded-2xl shadow-xl transition transform active:scale-95">
+                    ロビーに戻る 🔄
+                </button>
+            </div>
+            <p id="gameOverClientMsg" class="hidden text-xs text-blue-300/70 animate-pulse">
+                ホストがロビーに戻すのを待っています...
+            </p>
+        </div>
+
+    </main>
+
+    <!-- NOTIFICATION MODAL -->
+    <div id="actionNoticeModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm pointer-events-none">
+        <div class="glass-panel max-w-sm w-full rounded-3xl p-6 border-2 border-blue-400 shadow-2xl text-center animate-pop space-y-3 bg-slate-900">
+            <div id="noticeIcon" class="text-4xl">📢</div>
+            <h3 id="noticeTitle" class="text-lg font-black text-white">通知</h3>
+            <p id="noticeBody" class="text-xs font-bold text-blue-300">内容</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="p-4 text-center text-xs text-blue-300/50 border-t border-blue-500/10">
+        &copy; シティチェイス Online
+    </footer>
+
+    <!-- GAME SCRIPT -->
+    <script>
+        const PREFIX = "city-chase-online-v11-";
+
+        const PLAYER_COLORS = [
+            { hex: '#ec4899', name: 'ピンク' },
+            { hex: '#22c55e', name: 'グリーン' },
+            { hex: '#eab308', name: 'イエロー' },
+            { hex: '#a855f7', name: 'パープル' },
+            { hex: '#ef4444', name: 'レッド' },
+            { hex: '#3b82f6', name: 'ブルー' },
+            { hex: '#06b6d4', name: 'シアン' },
+            { hex: '#f97316', name: 'オレンジ' },
+            { hex: '#84cc16', name: 'ライム' },
+            { hex: '#6366f1', name: 'インディゴ' }
+        ];
+
+        let peer = null, myId = "", myName = "", roomCode = "";
+        let isHost = false;
+        let connections = {};
+        let hostConn = null;
+
+        let roomData = {
+            hostId: "",
+            status: 'LOBBY',
+            round: 1,
+            criminalId: "",
+            selectedCriminalTarget: 'RANDOM',
+            players: {},
+            criminalPos: null,
+            historyStrokes: [],
+            helicopters: [],
+            searchedBuildings: {},
+            selectedHelicopter: null,
+            setupSelectedHeliId: null,
+            policeSubPhase: 'SELECT_HELI',
+            winner: null,
+            winReason: ''
+        };
+
+        let soundEnabled = true;
+
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+
+                if (type === 'tap') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(550, now);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+                    osc.start(now);
+                    osc.stop(now + 0.06);
+                } else if (type === 'move') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'search') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(700, now);
+                    osc.frequency.exponentialRampToValueAtTime(300, now + 0.2);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                } else if (type === 'clue_found') {
+                    [440, 554.37, 659.25, 880].forEach((f, i) => {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.connect(g);
+                        g.connect(audioCtx.destination);
+                        o.type = 'sine';
+                        o.frequency.setValueAtTime(f, now + i * 0.07);
+                        g.gain.setValueAtTime(0.15, now + i * 0.07);
+                        g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.07 + 0.25);
+                        o.start(now + i * 0.07);
+                        o.stop(now + i * 0.07 + 0.25);
+                    });
+                } else if (type === 'win') {
+                    [523.25, 659.25, 783.99, 1046.50, 1318.51].forEach((freq, i) => {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.connect(g);
+                        g.connect(audioCtx.destination);
+                        o.type = 'triangle';
+                        o.frequency.setValueAtTime(freq, now + i * 0.1);
+                        g.gain.setValueAtTime(0.2, now + i * 0.1);
+                        g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.35);
+                        o.start(now + i * 0.1);
+                        o.stop(now + i * 0.1 + 0.35);
+                    });
+                }
+            } catch (e) {
+                console.warn("Audio error:", e);
+            }
+        }
+
+        function showView(viewId) {
+            ['viewLobby', 'viewRoomLobby', 'viewGame', 'viewGameOver'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+            const target = document.getElementById(viewId);
+            if (target) target.classList.remove('hidden');
+
+            const headerInfo = document.getElementById('headerInfo');
+            if (headerInfo) {
+                if (viewId !== 'viewLobby') headerInfo.classList.remove('hidden');
+                else headerInfo.classList.add('hidden');
+            }
+        }
+
+        function getPlayerName() {
+            const input = document.getElementById('playerNameInput');
+            const val = input ? input.value.trim() : '';
+            return val || 'プレイヤー' + Math.floor(Math.random() * 900 + 100);
+        }
+
+        function showNotice(icon, title, body, duration = 2000) {
+            document.getElementById('noticeIcon').innerText = icon;
+            document.getElementById('noticeTitle').innerText = title;
+            document.getElementById('noticeBody').innerText = body;
+            const modal = document.getElementById('actionNoticeModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                setTimeout(() => { modal.classList.add('hidden'); }, duration);
+            }
+        }
+
+        function getClueColorForRound(round) {
+            if (round === 1) return '#eab308';
+            if (round === 6) return '#ef4444';
+            return '#3b82f6';
+        }
+
+        function handleCreateRoom() {
+            playSound('tap');
+            myName = getPlayerName();
+            const input = document.getElementById('joinRoomCodeInput');
+            roomCode = input ? input.value.trim().toLowerCase() : '';
+
+            if (!roomCode) {
+                alert("合言葉を入力してください");
+                return;
+            }
+
+            if (peer) {
+                try { peer.destroy(); } catch (e) {}
+            }
+
+            isHost = true;
+            const hostPeerId = `${PREFIX}${roomCode}-host`;
+            peer = new Peer(hostPeerId);
+
+            peer.on('open', (id) => {
+                myId = id;
+                roomData.hostId = myId;
+                roomData.status = 'LOBBY';
+                roomData.round = 1;
+                roomData.players = {
+                    [myId]: { id: myId, name: myName, color: PLAYER_COLORS[0].hex, isHost: true }
+                };
+                roomData.helicopters = [];
+                roomData.searchedBuildings = {};
+                roomData.historyStrokes = [];
+
+                setupLobbyUI();
+                renderRoomState();
+            });
+
+            peer.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    alert("その合言葉の部屋はすでに存在するか、直前の接続が残っています。少し時間を置くか別の合言葉にしてください。");
+                } else {
+                    alert("部屋の作成に失敗しました: " + err.type);
+                }
+            });
+
+            peer.on('connection', (conn) => {
+                conn.on('open', () => {
+                    conn.on('data', (data) => handleHostData(conn, data));
+                });
+                conn.on('close', () => {
+                    delete connections[conn.peer];
+                    delete roomData.players[conn.peer];
+                    broadcastState();
+                });
+            });
+        }
+
+        function handleJoinRoom() {
+            playSound('tap');
+            myName = getPlayerName();
+            const input = document.getElementById('joinRoomCodeInput');
+            roomCode = input ? input.value.trim().toLowerCase() : '';
+
+            if (!roomCode) {
+                alert("合言葉を入力してください");
+                return;
+            }
+
+            if (peer) {
+                try { peer.destroy(); } catch (e) {}
+            }
+
+            isHost = false;
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                myId = id;
+                const hostPeerId = `${PREFIX}${roomCode}-host`;
+                
+                hostConn = peer.connect(hostPeerId);
+
+                let isConnected = false;
+
+                hostConn.on('open', () => {
+                    isConnected = true;
+                    hostConn.send({ type: 'JOIN', id: myId, name: myName });
+                    setupLobbyUI();
+                });
+
+                hostConn.on('error', (err) => {
+                    if (!isConnected) {
+                        alert("部屋が見つかりませんでした。ホストが部屋を作成しているか、合言葉が正しいか確認してください。");
+                    }
+                });
+
+                setTimeout(() => {
+                    if (!isConnected) {
+                        alert("接続がタイムアウトしました。ホストが部屋を開いているか確認してください。");
+                    }
+                }, 5000);
+
+                hostConn.on('data', (data) => handleClientData(data));
+            });
+
+            peer.on('error', () => {
+                alert("接続エラーが発生しました。");
+            });
+        }
+
+        function setupLobbyUI() {
+            document.getElementById('displayRoomCode').innerText = roomCode;
+            document.getElementById('lobbyRoomCode').innerText = roomCode;
+            showView('viewRoomLobby');
+        }
+
+        function getFirstAvailableColor() {
+            const usedColors = Object.values(roomData.players).map(p => p.color);
+            return (PLAYER_COLORS.find(c => !usedColors.includes(c.hex)) || PLAYER_COLORS[0]).hex;
+        }
+
+        function broadcastState() {
+            if (!isHost) return;
+            Object.values(connections).forEach(c => c.send({ type: 'SYNC_STATE', roomData }));
+            renderRoomState();
+        }
+
+        function handleHostData(conn, data) {
+            if (data.type === 'JOIN') {
+                if (roomData.status !== 'LOBBY') {
+                    conn.send({ type: 'ERROR', message: 'ゲームはすでに進行中です' });
+                    return;
+                }
+                connections[conn.peer] = conn;
+                const assignedColor = getFirstAvailableColor();
+                roomData.players[data.id] = { id: data.id, name: data.name, color: assignedColor, isHost: false };
+                broadcastState();
+            } else if (data.type === 'SELECT_COLOR') {
+                processSelectColor(data.playerId, data.color);
+            } else if (data.type === 'UPDATE_CRIMINAL_SETTING') {
+                roomData.selectedCriminalTarget = data.target;
+                broadcastState();
+            } else if (data.type === 'SELECT_SETUP_HELI') {
+                roomData.setupSelectedHeliId = data.heliId;
+                broadcastState();
+            } else if (data.type === 'PLACE_HELI_SETUP') {
+                processPlaceHeliSetup(data.heliId, data.r, data.c);
+            } else if (data.type === 'CRIMINAL_MOVE') {
+                processCriminalMove(data.r, data.c);
+            } else if (data.type === 'POLICE_ACTION') {
+                processPoliceAction(data.action, data.payload);
+            } else if (data.type === 'GO_TO_GAMEOVER') {
+                roomData.status = 'GAMEOVER';
+                broadcastState();
+            } else if (data.type === 'RETURN_TO_LOBBY') {
+                processReturnToLobby();
+            }
+        }
+
+        function handleClientData(data) {
+            if (data.type === 'SYNC_STATE') {
+                roomData = data.roomData;
+                renderRoomState();
+            } else if (data.type === 'ERROR') {
+                alert(data.message);
+            }
+        }
+
+        window.selectMyColor = function(hexColor) {
+            playSound('tap');
+            if (isHost) {
+                processSelectColor(myId, hexColor);
+            } else {
+                hostConn.send({ type: 'SELECT_COLOR', playerId: myId, color: hexColor });
+            }
+        };
+
+        function processSelectColor(playerId, hexColor) {
+            const takenBy = Object.values(roomData.players).find(p => p.color === hexColor && p.id !== playerId);
+            if (takenBy) return;
+
+            if (roomData.players[playerId]) {
+                roomData.players[playerId].color = hexColor;
+                broadcastState();
+            }
+        }
+
+        window.updateCriminalSetting = function() {
+            if (!isHost) return;
+            const sel = document.getElementById('criminalSelectSetting');
+            if (sel) {
+                roomData.selectedCriminalTarget = sel.value;
+                broadcastState();
+            }
+        };
+
+        window.startGame = function() {
+            playSound('win');
+            if (!isHost) return;
+
+            const playerIds = Object.keys(roomData.players);
+            if (playerIds.length < 2) {
+                alert("プレイには最低2名以上のプレイヤーが必要です");
+                return;
+            }
+
+            if (roomData.selectedCriminalTarget === 'RANDOM' || !roomData.players[roomData.selectedCriminalTarget]) {
+                const crimIdx = Math.floor(Math.random() * playerIds.length);
+                roomData.criminalId = playerIds[crimIdx];
+            } else {
+                roomData.criminalId = roomData.selectedCriminalTarget;
+            }
+
+            const policePlayerIds = playerIds.filter(id => id !== roomData.criminalId);
+            
+            roomData.helicopters = [];
+            policePlayerIds.forEach((pId, idx) => {
+                const p = roomData.players[pId];
+                roomData.helicopters.push({
+                    id: idx,
+                    r: null,
+                    c: null,
+                    color: p ? p.color : PLAYER_COLORS[idx].hex,
+                    name: `${p ? p.name : '警察'}のヘリ`,
+                    assignedPlayerId: pId,
+                    actedThisRound: false
+                });
+            });
+
+            while (roomData.helicopters.length < 3) {
+                const idx = roomData.helicopters.length;
+                const fallbackColors = ['#ec4899', '#22c55e', '#eab308'];
+                roomData.helicopters.push({
+                    id: idx,
+                    r: null,
+                    c: null,
+                    color: fallbackColors[idx],
+                    name: `予備ヘリ${idx+1}`,
+                    assignedPlayerId: null,
+                    actedThisRound: false
+                });
+            }
+
+            roomData.round = 1;
+            roomData.criminalPos = null;
+            roomData.historyStrokes = [];
+            roomData.searchedBuildings = {};
+            roomData.selectedHelicopter = null;
+            roomData.setupSelectedHeliId = roomData.helicopters[0].id;
+            roomData.policeSubPhase = 'SELECT_HELI';
+            roomData.status = 'HELI_SETUP';
+
+            broadcastState();
+        };
+
+        function processPlaceHeliSetup(heliId, r, c) {
+            const heli = roomData.helicopters.find(h => h.id === heliId);
+            if (!heli || heli.r !== null) return;
+
+            const occupied = roomData.helicopters.some(h => h.r === r && h.c === c);
+            if (occupied) return;
+
+            heli.r = r;
+            heli.c = c;
+
+            const nextUnplaced = roomData.helicopters.find(h => h.r === null && (h.assignedPlayerId === myId || !h.assignedPlayerId || Object.keys(roomData.players).length <= 3));
+            roomData.setupSelectedHeliId = nextUnplaced ? nextUnplaced.id : null;
+
+            const allPlaced = roomData.helicopters.every(h => h.r !== null && h.c !== null);
+            if (allPlaced) {
+                roomData.status = 'CRIMINAL_PHASE';
+                roomData.setupSelectedHeliId = null;
+            }
+
+            broadcastState();
+        }
+
+        function processCriminalMove(r, c) {
+            const color = getClueColorForRound(roomData.round);
+            
+            roomData.criminalPos = { r, c };
+            roomData.historyStrokes.push({
+                r, c,
+                round: roomData.round,
+                color: color,
+                revealed: false
+            });
+
+            if (roomData.round > 1 && checkCriminalTrapped()) {
+                triggerAnswerReveal('POLICE', '犯人の移動可能先がなくなり、完全包囲されました！');
+                return;
+            }
+
+            roomData.helicopters.forEach(h => h.actedThisRound = false);
+            roomData.status = 'POLICE_PHASE';
+            roomData.selectedHelicopter = null;
+            roomData.policeSubPhase = 'SELECT_HELI';
+
+            broadcastState();
+        }
+
+        function checkCriminalTrapped() {
+            if (!roomData.criminalPos) return false;
+            const { r, c } = roomData.criminalPos;
+            const neighbors = [
+                { r: r - 1, c }, { r: r + 1, c },
+                { r, c: c - 1 }, { r, c: c + 1 }
+            ].filter(p => p.r >= 0 && p.r < 5 && p.c >= 0 && p.c < 5);
+
+            const valid = neighbors.filter(p => {
+                return !roomData.historyStrokes.some(h => h.r === p.r && h.c === p.c);
+            });
+
+            return valid.length === 0;
+        }
+
+        function processPoliceAction(action, payload) {
+            if (action === 'SELECT_HELI') {
+                roomData.selectedHelicopter = payload.heliId;
+                roomData.policeSubPhase = 'MOVE_OR_SEARCH';
+                broadcastState();
+            } else if (action === 'CANCEL_HELI') {
+                roomData.selectedHelicopter = null;
+                roomData.policeSubPhase = 'SELECT_HELI';
+                broadcastState();
+            } else if (action === 'MOVE_HELI') {
+                const heli = roomData.helicopters[roomData.selectedHelicopter];
+                if (heli) {
+                    heli.r = payload.r;
+                    heli.c = payload.c;
+                    heli.actedThisRound = true;
+                }
+                checkPolicePhaseProgress();
+            } else if (action === 'SEARCH_BUILDING') {
+                const { r, c } = payload;
+                const bKey = `${r}_${c}`;
+                
+                let foundCar = false;
+                let clueColor = null;
+
+                if (roomData.criminalPos && roomData.criminalPos.r === r && roomData.criminalPos.c === c) {
+                    foundCar = true;
+                }
+
+                const clues = roomData.historyStrokes.filter(h => h.r === r && h.c === c);
+                if (clues.length > 0) {
+                    clueColor = clues[clues.length - 1].color;
+                    clues.forEach(clue => clue.revealed = true);
+                }
+
+                roomData.searchedBuildings[bKey] = {
+                    searched: true,
+                    foundCar,
+                    clueColor
+                };
+
+                const heli = roomData.helicopters[roomData.selectedHelicopter];
+                if (heli) heli.actedThisRound = true;
+
+                if (foundCar) {
+                    playSound('win');
+                    if (typeof confetti === 'function') {
+                        confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
+                    }
+                    triggerAnswerReveal('POLICE', '警察が犯人の隠れているビルを突き止め、逮捕しました！');
+                    return;
+                } else if (clueColor) {
+                    playSound('clue_found');
+                    if (typeof confetti === 'function') {
+                        confetti({ particleCount: 70, spread: 60, origin: { y: 0.5 } });
+                    }
+                    showNotice('🔍', '証拠発見！', `ビル (${r+1}, ${c+1}) から犯人の痕跡コマが見つかりました！`, 2500);
+                }
+
+                checkPolicePhaseProgress();
+            }
+        }
+
+        function checkPolicePhaseProgress() {
+            const allHelisActed = roomData.helicopters.every(h => h.actedThisRound);
+
+            if (allHelisActed) {
+                advanceAfterPoliceTurn();
+            } else {
+                roomData.selectedHelicopter = null;
+                roomData.policeSubPhase = 'SELECT_HELI';
+                broadcastState();
+            }
+        }
+
+        function advanceAfterPoliceTurn() {
+            if (roomData.round >= 11) {
+                triggerAnswerReveal('CRIMINAL', '11ラウンドが経過し、犯人は逃走に成功しました！');
+                return;
+            }
+
+            roomData.round++;
+            roomData.status = 'CRIMINAL_PHASE';
+            roomData.selectedHelicopter = null;
+            roomData.policeSubPhase = 'SELECT_HELI';
+
+            broadcastState();
+        }
+
+        function triggerAnswerReveal(winner, reason) {
+            roomData.status = 'ANSWER_REVEAL';
+            roomData.winner = winner;
+            roomData.winReason = reason;
+
+            roomData.historyStrokes.forEach(h => h.revealed = true);
+            broadcastState();
+        }
+
+        window.proceedToGameOverScreen = function() {
+            playSound('tap');
+            if (isHost) {
+                roomData.status = 'GAMEOVER';
+                broadcastState();
+            } else {
+                hostConn.send({ type: 'GO_TO_GAMEOVER' });
+            }
+        };
+
+        window.returnToLobby = function() {
+            playSound('tap');
+            if (isHost) {
+                processReturnToLobby();
+            } else {
+                hostConn.send({ type: 'RETURN_TO_LOBBY' });
+            }
+        };
+
+        function processReturnToLobby() {
+            roomData.status = 'LOBBY';
+            roomData.winner = null;
+            broadcastState();
+        }
+
+        window.handleGridClick = function(type, r, c) {
+            playSound('tap');
+            const isCriminal = myId === roomData.criminalId;
+
+            if (roomData.status === 'HELI_SETUP') {
+                if (isCriminal) return;
+                
+                if (type === 'HELI') {
+                    const heli = roomData.helicopters.find(h => h.r === null && h.id === r);
+                    if (heli) {
+                        roomData.setupSelectedHeliId = heli.id;
+                        if (isHost) broadcastState();
+                        else hostConn.send({ type: 'SELECT_SETUP_HELI', heliId: heli.id });
+                    }
+                } else if (type === 'INTERSECTION') {
+                    let targetHeliId = roomData.setupSelectedHeliId;
+                    if (targetHeliId === null) {
+                        const firstUnplaced = roomData.helicopters.find(h => h.r === null);
+                        if (firstUnplaced) targetHeliId = firstUnplaced.id;
+                        else return;
+                    }
+                    if (isHost) processPlaceHeliSetup(targetHeliId, r, c);
+                    else hostConn.send({ type: 'PLACE_HELI_SETUP', heliId: targetHeliId, r, c });
+                }
+
+            } else if (roomData.status === 'CRIMINAL_PHASE') {
+                if (!isCriminal) return;
+                if (type !== 'BUILDING') return;
+
+                if (roomData.round === 1) {
+                    sendCriminalMove(r, c);
+                } else {
+                    const curr = roomData.criminalPos;
+                    const isAdjacent = (Math.abs(curr.r - r) + Math.abs(curr.c - c)) === 1;
+                    const alreadyVisited = roomData.historyStrokes.some(h => h.r === r && h.c === c);
+
+                    if (!isAdjacent) {
+                        showNotice('⚠️', '移動不可', 'タテ・ヨコに隣接するビルにしか移動できません。', 1500);
+                        return;
+                    }
+                    if (alreadyVisited) {
+                        showNotice('⚠️', '移動不可', '過去に通ったビル（痕跡のある場所）には戻れません。', 1500);
+                        return;
+                    }
+                    sendCriminalMove(r, c);
+                }
+
+            } else if (roomData.status === 'POLICE_PHASE') {
+                if (isCriminal) return;
+
+                if (roomData.policeSubPhase === 'SELECT_HELI') {
+                    if (type === 'HELI') {
+                        const heliIdx = roomData.helicopters.findIndex(h => h.r === r && h.c === c);
+                        if (heliIdx !== -1) {
+                            const targetHeli = roomData.helicopters[heliIdx];
+
+                            if (targetHeli.actedThisRound) {
+                                showNotice('⚠️', '行動不可', 'このヘリはこのラウンドで既に行動済みです。', 1500);
+                                return;
+                            }
+                            if (targetHeli.assignedPlayerId && targetHeli.assignedPlayerId !== myId) {
+                                showNotice('⚠️', '操作不可', 'このヘリは他のプレイヤーの専用ヘリです。', 1500);
+                                return;
+                            }
+                            sendPoliceAction('SELECT_HELI', { heliId: heliIdx });
+                        }
+                    }
+                } else if (roomData.policeSubPhase === 'MOVE_OR_SEARCH') {
+                    const heli = roomData.helicopters[roomData.selectedHelicopter];
+                    if (!heli) return;
+
+                    if (type === 'INTERSECTION') {
+                        const isAdjacentInt = (Math.abs(heli.r - r) + Math.abs(heli.c - c)) === 1;
+                        const occupiedByOther = roomData.helicopters.some(h => h.id !== heli.id && h.r === r && h.c === c);
+
+                        if (!isAdjacentInt) {
+                            showNotice('⚠️', '移動不可', 'ヘリはタテ・ヨコに1マスしか進めません。', 1500);
+                            return;
+                        }
+                        if (occupiedByOther) {
+                            showNotice('⚠️', '移動不可', '他のヘリと同じ交差点には入れません。', 1500);
+                            return;
+                        }
+
+                        sendPoliceAction('MOVE_HELI', { r, c });
+                        playSound('move');
+
+                    } else if (type === 'BUILDING') {
+                        const isSurrounding = (r === heli.r - 1 || r === heli.r) && (c === heli.c - 1 || c === heli.c);
+                        
+                        if (!isSurrounding) {
+                            showNotice('⚠️', '捜索不可', '選択中のヘリが面している4つのビルのいずれかを選択してください。', 1500);
+                            return;
+                        }
+
+                        sendPoliceAction('SEARCH_BUILDING', { r, c });
+                        playSound('search');
+                    }
+                }
+            }
+        };
+
+        function sendCriminalMove(r, c) {
+            if (isHost) {
+                processCriminalMove(r, c);
+            } else {
+                hostConn.send({ type: 'CRIMINAL_MOVE', r, c });
+            }
+        }
+
+        function sendPoliceAction(action, payload) {
+            if (isHost) {
+                processPoliceAction(action, payload);
+            } else {
+                hostConn.send({ type: 'POLICE_ACTION', action, payload });
+            }
+        }
+
+        function renderRoomState() {
+            if (!roomData) return;
+
+            const isHostUser = roomData.hostId === myId;
+            const isCriminal = myId === roomData.criminalId;
+
+            const hostLobbySettings = document.getElementById('hostLobbySettings');
+            const crimSelect = document.getElementById('criminalSelectSetting');
+            if (hostLobbySettings && crimSelect) {
+                if (isHostUser && roomData.status === 'LOBBY') {
+                    hostLobbySettings.classList.remove('hidden');
+
+                    const currentVal = roomData.selectedCriminalTarget || 'RANDOM';
+                    crimSelect.innerHTML = '<option value="RANDOM">🎲 完全ランダムで選出</option>';
+
+                    Object.values(roomData.players).forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.innerText = `👤 ${p.name} を犯人に指名`;
+                        crimSelect.appendChild(opt);
+                    });
+                    crimSelect.value = currentVal;
+                } else {
+                    hostLobbySettings.classList.add('hidden');
+                }
+            }
+
+            const colorPaletteEl = document.getElementById('lobbyColorPalette');
+            if (colorPaletteEl) {
+                colorPaletteEl.innerHTML = '';
+                const myCurrentColor = roomData.players[myId] ? roomData.players[myId].color : '';
+                const usedColors = Object.values(roomData.players).map(p => p.color);
+
+                PLAYER_COLORS.forEach(item => {
+                    const isMyColor = item.hex === myCurrentColor;
+                    const isTaken = usedColors.includes(item.hex) && !isMyColor;
+
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.onclick = () => { if (!isTaken) selectMyColor(item.hex); };
+                    btn.disabled = isTaken;
+                    
+                    btn.className = `w-8 h-8 rounded-full border-2 transition transform relative flex items-center justify-center ${isMyColor ? 'ring-2 ring-cyan-300 scale-110 border-white' : isTaken ? 'opacity-25 cursor-not-allowed border-slate-700' : 'hover:scale-105 border-slate-500/50'}`;
+                    btn.style.backgroundColor = item.hex;
+
+                    if (isMyColor) {
+                        btn.innerHTML = '<i class="fa-solid fa-check text-white text-xs drop-shadow"></i>';
+                    } else if (isTaken) {
+                        btn.innerHTML = '<i class="fa-solid fa-lock text-slate-400 text-[10px]"></i>';
+                    }
+
+                    colorPaletteEl.appendChild(btn);
+                });
+            }
+
+            if (roomData.status === 'LOBBY') {
+                showView('viewRoomLobby');
+
+                const startBtn = document.getElementById('startGameBtn');
+                const waitingMsg = document.getElementById('waitingForHostMsg');
+
+                if (isHostUser) {
+                    if (startBtn) startBtn.classList.remove('hidden');
+                    if (waitingMsg) waitingMsg.classList.add('hidden');
+                } else {
+                    if (startBtn) startBtn.classList.add('hidden');
+                    if (waitingMsg) waitingMsg.classList.remove('hidden');
+                }
+
+                const playerList = document.getElementById('playerList');
+                if (playerList) {
+                    playerList.innerHTML = '';
+                    const playersArray = Object.values(roomData.players);
+                    document.getElementById('playerCount').innerText = playersArray.length;
+
+                    playersArray.forEach(p => {
+                        const div = document.createElement('div');
+                        div.className = "flex items-center justify-between bg-slate-950/80 border p-3 rounded-2xl";
+                        div.style.borderColor = `${p.color}60`;
+                        div.innerHTML = `
+                            <div class="flex items-center space-x-2.5">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white border shadow" style="background-color:${p.color}; border-color:${p.color}">
+                                    ${escapeHtml(p.name.charAt(0))}
+                                </div>
+                                <span class="font-bold text-sm text-slate-100">${escapeHtml(p.name)}</span>
+                            </div>
+                            ${p.isHost ? '<span class="text-[10px] font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30">ホスト</span>' : ''}
+                        `;
+                        playerList.appendChild(div);
+                    });
+                }
+
+            } else if (roomData.status === 'GAMEOVER') {
+                showView('viewGameOver');
+
+                const winIcon = document.getElementById('winnerIcon');
+                const winTitle = document.getElementById('winnerTitle');
+                const winSub = document.getElementById('winnerSubtitle');
+
+                if (roomData.winner === 'POLICE') {
+                    winIcon.innerText = '🚨';
+                    winTitle.innerText = '警察チームの勝利！';
+                    winTitle.className = 'text-3xl md:text-4xl font-black text-blue-400';
+                } else {
+                    winIcon.innerText = '🏎️';
+                    winTitle.innerText = '犯人の完全勝利！';
+                    winTitle.className = 'text-3xl md:text-4xl font-black text-rose-400';
+                }
+                winSub.innerText = roomData.winReason || '';
+
+                if (typeof confetti === 'function') confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+
+                const hostCtrl = document.getElementById('gameOverHostControls');
+                const clientMsg = document.getElementById('gameOverClientMsg');
+
+                if (isHostUser) {
+                    if (hostCtrl) hostCtrl.classList.remove('hidden');
+                    if (clientMsg) clientMsg.classList.add('hidden');
+                } else {
+                    if (hostCtrl) hostCtrl.classList.add('hidden');
+                    if (clientMsg) clientMsg.classList.remove('hidden');
+                }
+
+            } else {
+                showView('viewGame');
+
+                const roleBadge = document.getElementById('myRoleBadge');
+                const turnStatus = document.getElementById('turnStatusText');
+                const guideText = document.getElementById('actionGuideText');
+                const headerPanel = document.getElementById('gameStatusHeaderPanel');
+
+                let isMyTurn = false;
+                if (roomData.status === 'CRIMINAL_PHASE' && isCriminal) isMyTurn = true;
+                if (roomData.status === 'POLICE_PHASE' && !isCriminal) isMyTurn = true;
+                if (roomData.status === 'HELI_SETUP' && !isCriminal) isMyTurn = true;
+
+                if (headerPanel) {
+                    if (isMyTurn) {
+                        headerPanel.classList.add('my-turn-active-panel');
+                    } else {
+                        headerPanel.classList.remove('my-turn-active-panel');
+                    }
+                }
+
+                if (isCriminal) {
+                    roleBadge.innerText = '🏎️ 犯人 (潜伏側)';
+                    roleBadge.className = 'font-black text-sm md:text-base text-rose-400';
+                } else {
+                    roleBadge.innerText = '🚁 警察チーム (捜索側)';
+                    roleBadge.className = 'font-black text-sm md:text-base text-cyan-300';
+                }
+
+                if (roomData.status === 'HELI_SETUP') {
+                    turnStatus.innerText = isMyTurn ? '▶ 【あなた番】ヘリ初期配置' : 'フェーズ: ヘリ初期配置';
+                    turnStatus.className = isMyTurn ? 'bg-cyan-500 text-slate-950 font-black px-3 py-1.5 rounded-xl shadow-md' : 'bg-amber-500/20 text-amber-300 px-3 py-1.5 rounded-xl border border-amber-400/30';
+                    
+                    if (isCriminal) {
+                        guideText.innerText = '警察チームがヘリを初期配置しています...';
+                    } else {
+                        const activeHeli = roomData.helicopters.find(h => h.id === roomData.setupSelectedHeliId);
+                        guideText.innerText = activeHeli 
+                            ? `【あなたの番】${activeHeli.name} を置く交差点（丸点）をタップしてください！` 
+                            : '【初期配置】交差点（丸点）をタップしてヘリを配置してください。';
+                    }
+
+                } else if (roomData.status === 'CRIMINAL_PHASE') {
+                    turnStatus.innerText = isMyTurn ? '▶ 【あなた番】犯人の潜伏・移動' : 'フェーズ: 犯人の潜伏';
+                    turnStatus.className = isMyTurn ? 'bg-rose-500 text-white font-black px-3 py-1.5 rounded-xl shadow-md' : 'bg-rose-500/20 text-rose-300 px-3 py-1.5 rounded-xl border border-rose-400/30';
+
+                    if (isCriminal) {
+                        guideText.innerText = roomData.round === 1 
+                            ? '▶ 【あなたの番】好きなビルを1つ選択して隠れてください！'
+                            : '▶ 【あなたの番】隣接する未訪問のビルを選んで移動してください！';
+                    } else {
+                        guideText.innerText = '犯人が潜伏先を移動・決定しています... お待ちください。';
+                    }
+                } else if (roomData.status === 'POLICE_PHASE') {
+                    const actedCount = roomData.helicopters.filter(h => h.actedThisRound).length;
+                    turnStatus.innerText = isMyTurn ? `▶ 【あなた番】警察の捜索 (${actedCount}/3機)` : `フェーズ: 警察捜索 (${actedCount}/3機)`;
+                    turnStatus.className = isMyTurn ? 'bg-cyan-500 text-slate-950 font-black px-3 py-1.5 rounded-xl shadow-md' : 'bg-cyan-500/20 text-cyan-300 px-3 py-1.5 rounded-xl border border-cyan-400/30';
+
+                    if (isCriminal) {
+                        guideText.innerText = `警察チームがヘリを移動・捜索中です... (${actedCount}/3機行動完了)`;
+                    } else {
+                        if (roomData.policeSubPhase === 'SELECT_HELI') {
+                            guideText.innerText = `▶ 【あなたの番】未行動の自分のヘリを選択してください！ (${actedCount}/3機完了)`;
+                        } else {
+                            const heli = roomData.helicopters[roomData.selectedHelicopter];
+                            guideText.innerText = `▶ 【${heli ? heli.name : 'ヘリ'}選択中】隣接交差点へ「移動」または隣接ビルを「捜索」してください！`;
+                        }
+                    }
+                } else if (roomData.status === 'ANSWER_REVEAL') {
+                    turnStatus.innerText = '決着: 答え合わせ・全ルート公開';
+                    turnStatus.className = 'bg-amber-500/20 text-amber-300 px-3 py-1.5 rounded-xl border border-amber-400/30';
+                    guideText.innerText = `【答え合わせ】犯人の車コマと、これまでのすべての足取り（痕跡カラー）が全面公開されています！`;
+                }
+
+                renderSugorokuTracker();
+                renderActionControls();
+                renderCityMapGrid();
+            }
+        }
+
+        function renderSugorokuTracker() {
+            const trackerEl = document.getElementById('sugorokuTracker');
+            if (!trackerEl) return;
+            trackerEl.innerHTML = '';
+
+            document.getElementById('trackerCurrentRoundText').innerText = `R${roomData.round} / 11`;
+
+            for (let r = 1; r <= 11; r++) {
+                const color = getClueColorForRound(r);
+                const isCurrent = r === roomData.round;
+                const isPast = r < roomData.round;
+
+                const stepEl = document.createElement('div');
+                stepEl.className = `rounded-xl p-1 text-center border transition transform flex flex-col items-center justify-between ${isCurrent ? 'bg-slate-800 border-cyan-300 ring-2 ring-cyan-300/60 scale-105 z-10' : isPast ? 'bg-slate-950/60 border-slate-800 opacity-50' : 'bg-slate-900 border-slate-700/60'}`;
+                
+                stepEl.innerHTML = `
+                    <span class="text-[9px] font-mono font-bold ${isCurrent ? 'text-cyan-300' : 'text-slate-400'}">R${r}</span>
+                    <div class="w-3 h-3 rounded-full my-0.5 border border-white/60 shadow" style="background-color:${color}"></div>
+                    <span class="text-[8px] font-bold ${isCurrent ? 'text-white' : 'text-slate-500'}">${r===1?'黄':r===6?'赤':'青'}</span>
+                `;
+                trackerEl.appendChild(stepEl);
+            }
+        }
+
+        function renderActionControls() {
+            const controlsEl = document.getElementById('gameActionControls');
+            if (!controlsEl) return;
+            controlsEl.innerHTML = '';
+
+            const isCriminal = myId === roomData.criminalId;
+
+            if (roomData.status === 'HELI_SETUP' && !isCriminal) {
+                const unplacedHelis = roomData.helicopters.filter(h => h.r === null && (h.assignedPlayerId === myId || !h.assignedPlayerId || Object.keys(roomData.players).length <= 3));
+                
+                if (unplacedHelis.length > 0) {
+                    const row = document.createElement('div');
+                    row.className = 'flex flex-wrap justify-center gap-2 pt-1';
+                    
+                    unplacedHelis.forEach(h => {
+                        const isSelected = roomData.setupSelectedHeliId === h.id;
+                        const btn = document.createElement('button');
+                        btn.className = `px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-2 shadow ${isSelected ? 'ring-2 ring-cyan-300 scale-105 bg-slate-800 border-cyan-300' : 'bg-slate-900 hover:border-cyan-400 border-blue-500/30'}`;
+                        btn.style.borderColor = h.color;
+                        btn.innerHTML = `
+                            <span class="w-3.5 h-3.5 rounded-full inline-block" style="background-color:${h.color}"></span>
+                            <span class="text-white">${h.name} を配置選択</span>
+                        `;
+                        btn.onclick = () => {
+                            playSound('tap');
+                            roomData.setupSelectedHeliId = h.id;
+                            if (isHost) broadcastState();
+                            else hostConn.send({ type: 'SELECT_SETUP_HELI', heliId: h.id });
+                        };
+                        row.appendChild(btn);
+                    });
+                    controlsEl.appendChild(row);
+                }
+            } else if (roomData.status === 'POLICE_PHASE' && !isCriminal) {
+                if (roomData.policeSubPhase === 'MOVE_OR_SEARCH') {
+                    const btnCancel = document.createElement('button');
+                    btnCancel.className = 'bg-slate-800 hover:bg-slate-700 text-blue-300 text-xs font-bold px-4 py-2.5 rounded-xl border border-blue-500/30 transition';
+                    btnCancel.innerHTML = '<i class="fa-solid fa-rotate-left"></i> 他のヘリを選択し直す';
+                    btnCancel.onclick = () => sendPoliceAction('CANCEL_HELI');
+                    controlsEl.appendChild(btnCancel);
+                }
+            } else if (roomData.status === 'ANSWER_REVEAL') {
+                const btnProceed = document.createElement('button');
+                btnProceed.className = 'w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-sm py-3.5 rounded-2xl shadow-xl transition transform active:scale-95';
+                btnProceed.innerHTML = '勝敗リザルト結果を見る ➔';
+                btnProceed.onclick = () => proceedToGameOverScreen();
+                controlsEl.appendChild(btnProceed);
+            }
+        }
+
+        function renderCityMapGrid() {
+            const gridEl = document.getElementById('cityMapGrid');
+            if (!gridEl) return;
+            gridEl.innerHTML = '';
+
+            const isCriminal = myId === roomData.criminalId;
+            const isAnswerReveal = roomData.status === 'ANSWER_REVEAL';
+
+            const intCoords = [0, 20, 40, 60, 80, 100];
+            const bCoords   = [10, 30, 50, 70, 90];
+
+            const bWidth = 16;
+            const bHeight = 16;
+            const intSize = 11;
+
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    const topPos = bCoords[r];
+                    const leftPos = bCoords[c];
+
+                    const bKey = `${r}_${c}`;
+                    const searchInfo = roomData.searchedBuildings[bKey];
+                    const isCriminalHere = roomData.criminalPos && roomData.criminalPos.r === r && roomData.criminalPos.c === c;
+
+                    const bEl = document.createElement('div');
+                    bEl.onclick = () => handleGridClick('BUILDING', r, c);
+                    
+                    let bgStyle = 'bg-slate-900 border-slate-700/80';
+                    let contentHtml = `<span class="text-xs text-slate-400 font-mono font-bold">${r+1}-${c+1}</span>`;
+
+                    const historyClues = roomData.historyStrokes.filter(h => h.r === r && h.c === c);
+                    const isRevealedClue = historyClues.some(h => h.revealed);
+
+                    if (isAnswerReveal) {
+                        if (isCriminalHere) {
+                            bgStyle = 'bg-rose-950/90 border-rose-500 ring-2 ring-rose-400 animate-pulse';
+                            contentHtml = '<span class="text-2xl">🏎️</span>';
+                        } else if (historyClues.length > 0) {
+                            const lastClue = historyClues[historyClues.length - 1];
+                            bgStyle = 'bg-slate-900 border-amber-400 ring-1 ring-amber-400';
+                            contentHtml = `<div class="w-6 h-6 rounded-full shadow-lg border-2 border-white flex items-center justify-center text-[10px] font-black text-black" style="background-color:${lastClue.color}">R${lastClue.round}</div>`;
+                        } else if (searchInfo && searchInfo.searched) {
+                            bgStyle = 'bg-slate-950/90 border-slate-800 opacity-60';
+                            contentHtml = '<i class="fa-solid fa-xmark text-slate-500 text-lg"></i>';
+                        }
+                    } else if (searchInfo && searchInfo.searched) {
+                        if (searchInfo.foundCar) {
+                            bgStyle = 'bg-rose-950/90 border-rose-500 ring-2 ring-rose-400';
+                            contentHtml = '<span class="text-3xl drop-shadow-md">🚔</span>';
+                        } else if (searchInfo.clueColor) {
+                            bgStyle = 'bg-slate-900 border-amber-400 ring-2 ring-amber-400';
+                            contentHtml = `<div class="w-7 h-7 rounded-full shadow-lg border-2 border-white flex items-center justify-center text-xs font-black text-black" style="background-color:${searchInfo.clueColor}">証</div>`;
+                        } else {
+                            bgStyle = 'bg-slate-950/90 border-slate-800 opacity-60';
+                            contentHtml = '<i class="fa-solid fa-xmark text-slate-500 text-lg"></i>';
+                        }
+                    } else if (isCriminal) {
+                        if (isCriminalHere) {
+                            bgStyle = 'bg-rose-900/80 border-rose-400 ring-2 ring-rose-400';
+                            contentHtml = '<span class="text-3xl">🏎️</span>';
+                        } else if (historyClues.length > 0) {
+                            const lastClue = historyClues[historyClues.length - 1];
+                            bgStyle = 'bg-slate-900 border-indigo-500/60';
+                            contentHtml = `<div class="w-5 h-5 rounded-full border-2 border-white/90 shadow" style="background-color:${lastClue.color}"></div>`;
+                        }
+                    } else if (isRevealedClue) {
+                        const lastClue = historyClues[historyClues.length - 1];
+                        bgStyle = 'bg-slate-900 border-amber-400 ring-2 ring-amber-400';
+                        contentHtml = `<div class="w-7 h-7 rounded-full shadow-lg border-2 border-white flex items-center justify-center text-xs font-black text-black" style="background-color:${lastClue.color}">証</div>`;
+                    }
+
+                    bEl.className = `absolute rounded-2xl border-2 flex flex-col items-center justify-center cursor-pointer transition transform hover:scale-105 shadow-md ${bgStyle}`;
+                    bEl.style.top = `calc(${topPos}% - ${bHeight / 2}%)`;
+                    bEl.style.left = `calc(${leftPos}% - ${bWidth / 2}%)`;
+                    bEl.style.width = `${bWidth}%`;
+                    bEl.style.height = `${bHeight}%`;
+                    bEl.innerHTML = contentHtml;
+
+                    gridEl.appendChild(bEl);
+                }
+            }
+
+            for (let ir = 0; ir < 6; ir++) {
+                for (let ic = 0; ic < 6; ic++) {
+                    const topPos = intCoords[ir];
+                    const leftPos = intCoords[ic];
+
+                    const heli = roomData.helicopters.find(h => h.r === ir && h.c === ic);
+                    const isSelectedHeli = heli && (roomData.selectedHelicopter === heli.id || roomData.setupSelectedHeliId === heli.id);
+
+                    const intEl = document.createElement('div');
+                    intEl.onclick = () => handleGridClick(heli ? 'HELI' : 'INTERSECTION', ir, ic);
+
+                    let styleClasses = "absolute rounded-full flex items-center justify-center cursor-pointer transition transform";
+
+                    if (heli) {
+                        const isDone = heli.actedThisRound;
+                        styleClasses += ` z-20 shadow-xl ${isSelectedHeli ? 'scale-125 ring-4 ring-cyan-300' : isDone ? 'opacity-40 grayscale' : 'hover:scale-110'}`;
+                        intEl.style.backgroundColor = heli.color;
+                        intEl.innerHTML = `<i class="fa-solid fa-helicopter text-white text-base drop-shadow"></i>${isDone ? '<i class="fa-solid fa-check text-emerald-400 text-xs absolute -top-1 -right-1 bg-slate-900 rounded-full p-0.5"></i>' : ''}`;
+                    } else {
+                        styleClasses += " z-10 bg-slate-800/80 hover:bg-cyan-500/50 border-2 border-blue-400/50 shadow-sm";
+                        intEl.innerHTML = '<div class="w-2.5 h-2.5 rounded-full bg-blue-300"></div>';
+                    }
+
+                    intEl.className = `${styleClasses}`;
+                    intEl.style.top = `calc(${topPos}% - ${intSize / 2}%)`;
+                    intEl.style.left = `calc(${leftPos}% - ${intSize / 2}%)`;
+                    intEl.style.width = `${intSize}%`;
+                    intEl.style.height = `${intSize}%`;
+
+                    gridEl.appendChild(intEl);
+                }
+            }
+        }
+
+        window.toggleSound = function() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('soundIcon');
+            if (icon) {
+                if (soundEnabled) icon.className = "fa-solid fa-volume-high";
+                else icon.className = "fa-solid fa-volume-xmark text-rose-400";
+            }
+        };
+
+        window.copyRoomCode = function() {
+            if (!roomCode) return;
+            navigator.clipboard.writeText(roomCode);
+            showNotice("📋", "コピー完了", `合言葉 [ ${roomCode} ] をコピーしました！`, 1500);
+        };
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const btnCreate = document.getElementById('btnCreateRoom');
+            const btnJoin = document.getElementById('btnJoinRoom');
+
+            if (btnCreate) btnCreate.addEventListener('click', handleCreateRoom);
+            if (btnJoin) btnJoin.addEventListener('click', handleJoinRoom);
+        });
+    </script>
+</body>
+</html>
