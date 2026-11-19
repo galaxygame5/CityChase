@@ -287,7 +287,7 @@
 
     <!-- GAME SCRIPT -->
     <script>
-        const PREFIX = "city-chase-online-v11-";
+        const PREFIX = "city-chase-online-v12-";
 
         const PLAYER_COLORS = [
             { hex: '#ec4899', name: 'ピンク' },
@@ -590,7 +590,7 @@
             } else if (data.type === 'CRIMINAL_MOVE') {
                 processCriminalMove(data.r, data.c);
             } else if (data.type === 'POLICE_ACTION') {
-                processPoliceAction(data.action, data.payload);
+                processPoliceAction(data.action, data.payload, conn.peer);
             } else if (data.type === 'GO_TO_GAMEOVER') {
                 roomData.status = 'GAMEOVER';
                 broadcastState();
@@ -756,7 +756,7 @@
             return valid.length === 0;
         }
 
-        function processPoliceAction(action, payload) {
+        function processPoliceAction(action, payload, senderId = null) {
             if (action === 'SELECT_HELI') {
                 roomData.selectedHelicopter = payload.heliId;
                 roomData.policeSubPhase = 'MOVE_OR_SEARCH';
@@ -790,13 +790,17 @@
                     clues.forEach(clue => clue.revealed = true);
                 }
 
+                // 捜索を行ったヘリのカラーを保持して、薄い背景色で塗れるようにする
+                const heli = roomData.helicopters[roomData.selectedHelicopter];
+                const searcherColor = heli ? heli.color : '#3b82f6';
+
                 roomData.searchedBuildings[bKey] = {
                     searched: true,
                     foundCar,
-                    clueColor
+                    clueColor,
+                    searcherColor // ヘリの色でハズレ(×)を薄く染めるため保存
                 };
 
-                const heli = roomData.helicopters[roomData.selectedHelicopter];
                 if (heli) heli.actedThisRound = true;
 
                 if (foundCar) {
@@ -1181,7 +1185,7 @@
                         guideText.innerText = `警察チームがヘリを移動・捜索中です... (${actedCount}/3機行動完了)`;
                     } else {
                         if (roomData.policeSubPhase === 'SELECT_HELI') {
-                            guideText.innerText = `▶ 【あなたの番】未行動の自分のヘリを選択してください！ (${actedCount}/3機完了)`;
+                            guideText.innerText = `▶ 【あなた番】未行動の自分のヘリを選択してください！ (${actedCount}/3機完了)`;
                         } else {
                             const heli = roomData.helicopters[roomData.selectedHelicopter];
                             guideText.innerText = `▶ 【${heli ? heli.name : 'ヘリ'}選択中】隣接交差点へ「移動」または隣接ビルを「捜索」してください！`;
@@ -1315,8 +1319,13 @@
                             bgStyle = 'bg-slate-900 border-amber-400 ring-1 ring-amber-400';
                             contentHtml = `<div class="w-6 h-6 rounded-full shadow-lg border-2 border-white flex items-center justify-center text-[10px] font-black text-black" style="background-color:${lastClue.color}">R${lastClue.round}</div>`;
                         } else if (searchInfo && searchInfo.searched) {
-                            bgStyle = 'bg-slate-950/90 border-slate-800 opacity-60';
-                            contentHtml = '<i class="fa-solid fa-xmark text-slate-500 text-lg"></i>';
+                            // ヘリの色で薄くハズレを色付け（半透明の背景色）
+                            const customBg = searchInfo.searcherColor ? `${searchInfo.searcherColor}25` : 'rgba(15, 23, 42, 0.9)';
+                            const customBorder = searchInfo.searcherColor || '#334155';
+                            bgStyle = `border-2`;
+                            bEl.style.backgroundColor = customBg;
+                            bEl.style.borderColor = customBorder;
+                            contentHtml = '<i class="fa-solid fa-xmark text-slate-300 text-lg"></i>';
                         }
                     } else if (searchInfo && searchInfo.searched) {
                         if (searchInfo.foundCar) {
@@ -1326,8 +1335,13 @@
                             bgStyle = 'bg-slate-900 border-amber-400 ring-2 ring-amber-400';
                             contentHtml = `<div class="w-7 h-7 rounded-full shadow-lg border-2 border-white flex items-center justify-center text-xs font-black text-black" style="background-color:${searchInfo.clueColor}">証</div>`;
                         } else {
-                            bgStyle = 'bg-slate-950/90 border-slate-800 opacity-60';
-                            contentHtml = '<i class="fa-solid fa-xmark text-slate-500 text-lg"></i>';
+                            // 警察が探索したハズレ（×）マスを、捜索したヘリのカラーの薄い背景色で染める
+                            const customBg = searchInfo.searcherColor ? `${searchInfo.searcherColor}25` : 'rgba(15, 23, 42, 0.9)';
+                            const customBorder = searchInfo.searcherColor || '#334155';
+                            bgStyle = `border-2`;
+                            bEl.style.backgroundColor = customBg;
+                            bEl.style.borderColor = customBorder;
+                            contentHtml = '<i class="fa-solid fa-xmark text-slate-300 text-lg"></i>';
                         }
                     } else if (isCriminal) {
                         if (isCriminalHere) {
